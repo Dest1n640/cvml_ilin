@@ -96,19 +96,17 @@ for i, _ in enumerate(sorted(data.glob('*.png'))):
   # print(amount)
 
 
+  threshold_x = 30
   letters = []
-  prev_centroid_x = None
+  prev_right = None
   for idx, box in zip(result.flatten(), combined_regions):
-      cx = box[4]
-      if prev_centroid_x is not None and cx - prev_centroid_x > 92:
-          letters.append(" ")
-      letters.append(symbols.get(int(idx)))
-      prev_centroid_x = cx
+    left = box[1]
+    right = box[3]
+    if prev_right is not None and left - prev_right > threshold_x:
+      letters.append(" ")
+    letters.append(symbols.get(int(idx)))
+    prev_right = right
 
   full_words = "".join(map(str, letters))
 
   print(i, full_words)
-  # print(train, response)
-  # print(extractor(image))
-  # plt.imshow(image)
-  # plt.show()
