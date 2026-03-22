@@ -6,17 +6,9 @@ from torchvision import transforms
 from torch import nn, optim
 from pathlib import Path
 from PIL import Image, ImageOps
+from collections import deque
+import os
 
-
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-    print("Device = mps")
-elif torch.cuda.is_available():
-    device = torch.device("cuda")
-    print("Device = cuda")
-else:
-    device = torch.device("cpu")
-    print("Device = cpu")
 
 class CyrrilicDataset(Dataset):
   def __init__(self, path, transform):
@@ -98,11 +90,44 @@ class CyrrilicCNN(nn.Module):
     x = self.fc2(x)
     return x
 
+def choose_device():
+  if torch.backends.mps.is_available():
+      device = torch.device("mps")
+      print("Device = mps")
+  elif torch.cuda.is_available():
+      device = torch.device("cuda")
+      print("Device = cuda")
+  else:
+      device = torch.device("cpu")
+      print("Device = cpu")
+  return device
+
+
+def loss_and_acc_calc(loader, model, criterion=nn.CrossEntropyLoss()):
+  run_loss = 0.0
+  correct = 0.0
+  total = 0.0
+  for _, (images, labeles) in enumerate(loader):
+    images = images.to(device)
+    labeles = labeles.to(device)
+    output = model(images)
+    loss = criterion(output, labeles)
+
+    run_loss += loss.item()
+    _, predict = torch.max(output, 1)
+    total += labeles.size(0)
+    correct += (predict == labeles).sum().item()
+
+  epoch_loss = run_loss / len(loader)
+  epoch_acc = 100 * correct / total
+  return epoch_loss, epoch_acc
+
+
+
 
 train_transforms = transforms.Compose([
     transforms.Resize((128, 128)),
     transforms.RandomAffine(3, (0.03, 0.03), (0.9, 1.0)),
-    # transforms.RandomHorizontalFlip(p=0.5),
     transforms.Grayscale(1),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))
@@ -115,11 +140,12 @@ test_transforms = transforms.Compose([
    transforms.Normalize((0.5,), (0.5,))
 ])
 
-
+device = choose_device()
 
 path = Path("./tmp/Cyrillic/")
 model = CyrrilicCNN().to(device)
 train_dataset = CyrrilicDataset(path, train_transforms)
+val_dataset = CyrrilicDataset(path, test_transforms)
 test_dataset = CyrrilicDataset(path, test_transforms)
 
 indices = list(range(len(train_dataset)))
@@ -127,13 +153,16 @@ labels = train_dataset.labels
 
 
 train_idx, test_idx = train_test_split(indices, test_size=0.2, stratify=labels)
+labels = [labels[i] for i in train_idx]
+train_idx, val_idx = train_test_split(train_idx, test_size=0.1, stratify=labels)
 
 train_data = Subset(train_dataset, train_idx)
-val_data = Subset(train_dataset, )
+val_data = Subset(val_dataset, val_idx)
 test_data = Subset(test_dataset, test_idx)
 
 
 train_loader = DataLoader(train_data, batch_size = 16, shuffle = True)
+val_loader = DataLoader(val_data, batch_size=16, shuffle=False)
 test_loader = DataLoader(test_data, batch_size = 16, shuffle=False)
 
 total_params = sum(p.numel() for p in model.parameters()) 
@@ -143,7 +172,14 @@ scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
 train_loss = []
 train_acc = []
+val_loss = []
+val_acc = []
 num_epochs = 100
+
+best_loss = float('inf')
+patience = 5
+counter = 0
+last_epochs = deque(maxlen=patience)
 
 save_path = Path("./tmp")
 model_path = save_path / "model.pth"
@@ -152,10 +188,6 @@ model_path.parent.mkdir(parents=True, exist_ok=True)
 model.train()
 
 if not model_path.exists():
-  best_loss = float('inf')
-  patience = 5
-  counter = 0
-
   for epoch in range(num_epochs):
      model.train()
      run_loss = 0.0
@@ -172,38 +204,60 @@ if not model_path.exists():
         loss.backward()
         optimizer.step()
 
-        run_loss += loss.item()
-        _, predict = torch.max(output, 1)
-        total += labels.size(0)
-        correct += (predict == labels).sum().item()
+        if len(last_epochs) == patience:
+           _, old_path = last_epochs.popleft()
+           if os.path.exists(old_path):
+              os.remove(old_path)
 
-     scheduler.step()
-     epoch_loss = run_loss / len(train_loader)
-     epoch_acc = 100 * correct / total
-     train_loss.append(epoch_loss)
-     train_acc.append(epoch_acc)
+        epoch_model_path = save_path / f"model_epoch{epoch}.pth"
+        torch.save(model.state_dict(), epoch_model_path)
+        last_epochs.append((epoch, epoch_model_path))
 
-     print(f"\nEpoch - {epoch}\n loss - {epoch_loss}\n acc - {epoch_acc}\n")
+     train_epoch_loss, train_epoch_acc = loss_and_acc_calc(train_loader, model)
+     val_epoch_loss, val_epoch_acc = loss_and_acc_calc(val_loader, model)
 
-     if epoch_loss < best_loss:
-        best_loss = epoch_loss
+     train_loss.append(train_epoch_loss)
+     train_acc.append(train_epoch_acc)
+     val_loss.append(val_epoch_loss)
+     val_acc.append(val_epoch_acc)
+
+
+     print(f"\nEpoch - {epoch}\n train_loss - {train_epoch_loss}\n train_acc - {train_epoch_acc}")
+     print(f" val_loss - {val_epoch_loss}\n val_acc - {val_epoch_acc}")
+
+     if val_epoch_loss < best_loss:
+        best_loss = val_epoch_loss
         counter = 0
-        torch.save(model.state_dict(), model_path)
      else:
         counter += 1
-        if counter >= patience:
-           break
-else:
-  model.load_state_dict(torch.load(model_path, map_location = device))
+        if counter >= patience and len(last_epochs) == patience:
+          callback_epoch, callback_path = last_epochs[0]
+          model.load_state_dict(torch.load(callback_path, map_location=device))
+          for _, previus_model_path in last_epochs:
+            if os.path.exists(previus_model_path):
+             os.remove(previus_model_path)
+          torch.save(model.state_dict(), model_path)
+          break
 
 model.load_state_dict(torch.load(model_path, map_location = device))
 
 
-plt.figure()
+plt.figure(figsize=(12, 5))
+
+plt.subplot(1, 2, 1)
 plt.plot(train_loss, label='Train Loss')
-plt.plot(train_acc, label='Train Accuracy')
+plt.plot(val_loss, label='Validation Loss')
 plt.xlabel('Epoch')
+plt.title('Loss')
 plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(train_acc, label='Train Accuracy')
+plt.plot(val_acc, label='Validation Accuracy')
+plt.xlabel('Epoch')
+plt.title('Accuracy')
+plt.legend()
+
 plt.savefig('train.png')
 
 model.eval()
