@@ -7,7 +7,6 @@ from torch import nn, optim
 from pathlib import Path
 from PIL import Image, ImageOps
 from collections import deque
-import os
 
 
 class CyrrilicDataset(Dataset):
