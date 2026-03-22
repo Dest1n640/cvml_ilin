@@ -102,7 +102,7 @@ def choose_device():
   return device
 
 
-def loss_and_acc_calc(loader, model, criterion=nn.CrossEntropyLoss()):
+def loss_and_acc_calc(loader, model, device, criterion=nn.CrossEntropyLoss()):
   model.eval()
   run_loss = 0.0
   correct = 0.0
@@ -227,8 +227,8 @@ if __name__ == "__main__":
         if old_path.exists():
           old_path.unlink()
 
-      train_epoch_loss, train_epoch_acc = loss_and_acc_calc(train_loader, model)
-      val_epoch_loss, val_epoch_acc = loss_and_acc_calc(val_loader, model)
+      train_epoch_loss, train_epoch_acc = loss_and_acc_calc(train_loader, model, device)
+      val_epoch_loss, val_epoch_acc = loss_and_acc_calc(val_loader, model, device)
 
       train_loss.append(train_epoch_loss)
       train_acc.append(train_epoch_acc)
@@ -247,11 +247,10 @@ if __name__ == "__main__":
       else:
           counter += 1
           if counter >= patience:
-            _, rollback_path = last_epochs[0]
             model.load_state_dict(torch.load(model_path, map_location=device))
-            for _, path in last_epochs:
-               if path.exists():
-                  path.unlink()
+            for _, rollback_path in last_epochs:
+               if rollback_path.exists():
+                  rollback_path.unlink()
             break
 
   model.load_state_dict(torch.load(model_path, map_location = device))
