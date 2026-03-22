@@ -104,24 +104,56 @@ def choose_device():
 
 
 def loss_and_acc_calc(loader, model, criterion=nn.CrossEntropyLoss()):
+  model.eval()
   run_loss = 0.0
   correct = 0.0
   total = 0.0
-  for _, (images, labeles) in enumerate(loader):
-    images = images.to(device)
-    labeles = labeles.to(device)
-    output = model(images)
-    loss = criterion(output, labeles)
+  with torch.no_grad():
+    for _, (images, labeles) in enumerate(loader):
+      images = images.to(device)
+      labeles = labeles.to(device)
+      output = model(images)
+      loss = criterion(output, labeles)
 
-    run_loss += loss.item()
-    _, predict = torch.max(output, 1)
-    total += labeles.size(0)
-    correct += (predict == labeles).sum().item()
+      run_loss += loss.item()
+      _, predict = torch.max(output, 1)
+      total += labeles.size(0)
+      correct += (predict == labeles).sum().item()
 
   epoch_loss = run_loss / len(loader)
   epoch_acc = 100 * correct / total
   return epoch_loss, epoch_acc
 
+def build_dataloaders(path, batch_size=16):
+    train_dataset = CyrrilicDataset(path, train_transforms)
+    val_dataset = CyrrilicDataset(path, test_transforms)
+    test_dataset = CyrrilicDataset(path, test_transforms)
+
+    indices = list(range(len(train_dataset)))
+    labels = train_dataset.labels
+
+    train_idx, test_idx = train_test_split(
+        indices,
+        test_size=0.2,
+        stratify=labels,
+    )
+
+    train_labels = [labels[i] for i in train_idx]
+    train_idx, val_idx = train_test_split(
+        train_idx,
+        test_size=0.1,
+        stratify=train_labels,
+    )
+
+    train_data = Subset(train_dataset, train_idx)
+    val_data = Subset(val_dataset, val_idx)
+    test_data = Subset(test_dataset, test_idx)
+
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, test_loader, test_data
 
 
 
@@ -140,134 +172,106 @@ test_transforms = transforms.Compose([
    transforms.Normalize((0.5,), (0.5,))
 ])
 
-device = choose_device()
 
-path = Path("./tmp/Cyrillic/")
-model = CyrrilicCNN().to(device)
-train_dataset = CyrrilicDataset(path, train_transforms)
-val_dataset = CyrrilicDataset(path, test_transforms)
-test_dataset = CyrrilicDataset(path, test_transforms)
+if __name__ == "__main__":
+  device = choose_device()
 
-indices = list(range(len(train_dataset)))
-labels = train_dataset.labels
+  path = Path("./tmp/Cyrillic/")
+  model = CyrrilicCNN().to(device)
 
+  train_loader, val_loader, test_loader, test_data = build_dataloaders(path)
 
-train_idx, test_idx = train_test_split(indices, test_size=0.2, stratify=labels)
-labels = [labels[i] for i in train_idx]
-train_idx, val_idx = train_test_split(train_idx, test_size=0.1, stratify=labels)
+  total_params = sum(p.numel() for p in model.parameters()) 
+  criterion = nn.CrossEntropyLoss()
+  optimizer = optim.Adam(model.parameters(), lr = 0.001)
+  scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
-train_data = Subset(train_dataset, train_idx)
-val_data = Subset(val_dataset, val_idx)
-test_data = Subset(test_dataset, test_idx)
+  train_loss = []
+  train_acc = []
+  val_loss = []
+  val_acc = []
+  num_epochs = 100
 
+  best_loss = float('inf')
+  patience = 5
+  counter = 0
+  last_epochs = deque()
 
-train_loader = DataLoader(train_data, batch_size = 16, shuffle = True)
-val_loader = DataLoader(val_data, batch_size=16, shuffle=False)
-test_loader = DataLoader(test_data, batch_size = 16, shuffle=False)
+  save_path = Path("./tmp")
+  model_path = save_path / "model.pth"
+  model_path.parent.mkdir(parents=True, exist_ok=True)
 
-total_params = sum(p.numel() for p in model.parameters()) 
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr = 0.001)
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+  model.train()
 
-train_loss = []
-train_acc = []
-val_loss = []
-val_acc = []
-num_epochs = 100
+  if not model_path.exists():
+    for epoch in range(num_epochs):
+      model.train()
 
-best_loss = float('inf')
-patience = 5
-counter = 0
-last_epochs = deque(maxlen=patience)
+      for batch_idx, (images, labels) in enumerate(train_loader):
+          images = images.to(device)
+          labels = labels.to(device)
 
-save_path = Path("./tmp")
-model_path = save_path / "model.pth"
-model_path.parent.mkdir(parents=True, exist_ok=True)
+          optimizer.zero_grad()
+          output = model(images)
+          loss = criterion(output, labels)
+          loss.backward()
+          optimizer.step()
 
-model.train()
+      scheduler.step() 
 
-if not model_path.exists():
-  for epoch in range(num_epochs):
-     model.train()
-     run_loss = 0.0
-     correct = 0.0
-     total = 0.0
+      epoch_model_path = save_path / f"model_epoch{epoch}.pth"
+      torch.save(model.state_dict(), epoch_model_path)
+      last_epochs.append((epoch, epoch_model_path))
 
-     for batch_idx, (images, labels) in enumerate(train_loader):
-        images = images.to(device)
-        labels = labels.to(device)
+      if len(last_epochs) > patience:
+        _, old_path = last_epochs.popleft()
+        if old_path.exists():
+          old_path.unlink()
 
-        optimizer.zero_grad()
-        output = model(images)
-        loss = criterion(output, labels)
-        loss.backward()
-        optimizer.step()
+      train_epoch_loss, train_epoch_acc = loss_and_acc_calc(train_loader, model)
+      val_epoch_loss, val_epoch_acc = loss_and_acc_calc(val_loader, model)
 
-        if len(last_epochs) == patience:
-           _, old_path = last_epochs.popleft()
-           if os.path.exists(old_path):
-              os.remove(old_path)
-
-        epoch_model_path = save_path / f"model_epoch{epoch}.pth"
-        torch.save(model.state_dict(), epoch_model_path)
-        last_epochs.append((epoch, epoch_model_path))
-
-     train_epoch_loss, train_epoch_acc = loss_and_acc_calc(train_loader, model)
-     val_epoch_loss, val_epoch_acc = loss_and_acc_calc(val_loader, model)
-
-     train_loss.append(train_epoch_loss)
-     train_acc.append(train_epoch_acc)
-     val_loss.append(val_epoch_loss)
-     val_acc.append(val_epoch_acc)
+      train_loss.append(train_epoch_loss)
+      train_acc.append(train_epoch_acc)
+      val_loss.append(val_epoch_loss)
+      val_acc.append(val_epoch_acc)
 
 
-     print(f"\nEpoch - {epoch}\n train_loss - {train_epoch_loss}\n train_acc - {train_epoch_acc}")
-     print(f" val_loss - {val_epoch_loss}\n val_acc - {val_epoch_acc}")
+      print(f"\nEpoch - {epoch}\n train_loss - {train_epoch_loss}\n train_acc - {train_epoch_acc}")
+      print(f" val_loss - {val_epoch_loss}\n val_acc - {val_epoch_acc}")
 
-     if val_epoch_loss < best_loss:
-        best_loss = val_epoch_loss
-        counter = 0
-     else:
-        counter += 1
-        if counter >= patience and len(last_epochs) == patience:
-          callback_epoch, callback_path = last_epochs[0]
-          model.load_state_dict(torch.load(callback_path, map_location=device))
-          for _, previus_model_path in last_epochs:
-            if os.path.exists(previus_model_path):
-             os.remove(previus_model_path)
+      if val_epoch_loss < best_loss:
+          best_loss = val_epoch_loss
+          counter = 0
           torch.save(model.state_dict(), model_path)
-          break
+          best_model_path = epoch_model_path
+      else:
+          counter += 1
+          if counter >= patience:
+            _, rollback_path = last_epochs[0]
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            for _, path in last_epochs:
+               if path.exists():
+                  path.unlink()
+            break
 
-model.load_state_dict(torch.load(model_path, map_location = device))
+  model.load_state_dict(torch.load(model_path, map_location = device))
 
 
-plt.figure(figsize=(12, 5))
+  plt.figure(figsize=(12, 5))
 
-plt.subplot(1, 2, 1)
-plt.plot(train_loss, label='Train Loss')
-plt.plot(val_loss, label='Validation Loss')
-plt.xlabel('Epoch')
-plt.title('Loss')
-plt.legend()
+  plt.subplot(1, 2, 1)
+  plt.plot(train_loss, label='Train Loss')
+  plt.plot(val_loss, label='Validation Loss')
+  plt.xlabel('Epoch')
+  plt.title('Loss')
+  plt.legend()
 
-plt.subplot(1, 2, 2)
-plt.plot(train_acc, label='Train Accuracy')
-plt.plot(val_acc, label='Validation Accuracy')
-plt.xlabel('Epoch')
-plt.title('Accuracy')
-plt.legend()
+  plt.subplot(1, 2, 2)
+  plt.plot(train_acc, label='Train Accuracy')
+  plt.plot(val_acc, label='Validation Accuracy')
+  plt.xlabel('Epoch')
+  plt.title('Accuracy')
+  plt.legend()
 
-plt.savefig('train.png')
-
-model.eval()
-correct = 0
-total = 0
-with torch.no_grad():
-    for images, labels in test_loader:
-        images, labels = images.to(device), labels.to(device)
-        outputs = model(images)
-        _, predicted = torch.max(outputs.data, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-print(f'Test accuracy: {100 * correct / total}')
+  plt.savefig('train.png')
