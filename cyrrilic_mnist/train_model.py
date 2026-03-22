@@ -207,15 +207,15 @@ if __name__ == "__main__":
       model.train()
 
       for batch_idx, (images, labels) in enumerate(train_loader):
-          images = images.to(device)
-          labels = labels.to(device)
+        images = images.to(device)
+        labels = labels.to(device)
 
-          optimizer.zero_grad()
-          output = model(images)
-          loss = criterion(output, labels)
-          loss.backward()
-          optimizer.step()
-
+        optimizer.zero_grad()
+        output = model(images)
+        loss = criterion(output, labels)
+        loss.backward()
+        optimizer.step()
+      
       scheduler.step() 
 
       epoch_model_path = save_path / f"model_epoch{epoch}.pth"
@@ -240,36 +240,36 @@ if __name__ == "__main__":
       print(f" val_loss - {val_epoch_loss}\n val_acc - {val_epoch_acc}")
 
       if val_epoch_loss < best_loss:
-          best_loss = val_epoch_loss
-          counter = 0
-          torch.save(model.state_dict(), model_path)
-          best_model_path = epoch_model_path
+        best_loss = val_epoch_loss
+        counter = 0
+        torch.save(model.state_dict(), model_path)
+        best_model_path = epoch_model_path
       else:
-          counter += 1
-          if counter >= patience:
-            model.load_state_dict(torch.load(model_path, map_location=device))
-            for _, rollback_path in last_epochs:
-               if rollback_path.exists():
-                  rollback_path.unlink()
-            break
+        counter += 1
+        if counter >= patience:
+          model.load_state_dict(torch.load(model_path, map_location=device))
+          for _, rollback_path in last_epochs:
+            if rollback_path.exists():
+              rollback_path.unlink()
+          break
+
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(train_loss, label='Train Loss')
+    plt.plot(val_loss, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.title('Loss')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(train_acc, label='Train Accuracy')
+    plt.plot(val_acc, label='Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.title('Accuracy')
+    plt.legend()
+
+    plt.savefig('train.png')
+
 
   model.load_state_dict(torch.load(model_path, map_location = device))
-
-
-  plt.figure(figsize=(12, 5))
-
-  plt.subplot(1, 2, 1)
-  plt.plot(train_loss, label='Train Loss')
-  plt.plot(val_loss, label='Validation Loss')
-  plt.xlabel('Epoch')
-  plt.title('Loss')
-  plt.legend()
-
-  plt.subplot(1, 2, 2)
-  plt.plot(train_acc, label='Train Accuracy')
-  plt.plot(val_acc, label='Validation Accuracy')
-  plt.xlabel('Epoch')
-  plt.title('Accuracy')
-  plt.legend()
-
-  plt.savefig('train.png')
