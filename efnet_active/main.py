@@ -32,35 +32,34 @@ EfficienNet.eval()
 cap = cv2.VideoCapture(0)
 cv2.namedWindow("Camera", cv2.WINDOW_GUI_NORMAL)
 
+continuous_mode = True  # Флаг режима: True - постоянно, False - по кнопке
+alex_label, alex_prob = "None", 0.0
+effi_label, effi_prob = "None", 0.0
+
 while True:
-  _, frame = cap.read()
-  key = cv2.waitKey(1) & 0xFf
-  alex_label, alex_prob = predict(AlexNet, frame, transforms_pipeline, device)
-  effi_label, effi_prob = predict(EfficienNet, frame, transforms_pipeline, device)
+    _, frame = cap.read()
+    key = cv2.waitKey(1) & 0xFF
+    
+    if key == ord("m"):
+        continuous_mode = not continuous_mode
+        print(f"Continuous mode: {continuous_mode}")
 
-  cv2.putText(frame,
-              "AlexNet predict - " + alex_label,
-              (10, 30),
-              cv2.FONT_HERSHEY_SIMPLEX,
-              0.7,
-              (255, 0, 0),
-              2)
+    if continuous_mode or key == ord("p"):
+        alex_label, alex_prob = predict(AlexNet, frame, transforms_pipeline, device)
+        effi_label, effi_prob = predict(EfficienNet, frame, transforms_pipeline, device)
+        print(f"AlexNet: label = {alex_label}, prob = {alex_prob}")
+        print(f"EfficientNet: label = {effi_label}, prob = {effi_prob}")
 
-  cv2.putText(frame,
-              "EfficienNet predict - " + effi_label,
-              (10, 60),
-              cv2.FONT_HERSHEY_SIMPLEX,
-              0.7,
-              (0, 255, 0),
-              2)
+    mode_text = "Mode: Continuous" if continuous_mode else "Mode: Manual (Press 'p')"
+    cv2.putText(frame, mode_text, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+    
+    cv2.putText(frame, "AlexNet: " + alex_label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+    cv2.putText(frame, "EfficientNet: " + effi_label, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-  cv2.imshow("Camera", frame)
+    cv2.imshow("Camera", frame)
 
-  print(f"AlexNet: label = {alex_label}, prob = {alex_prob}")
-  print(f"EfficientNet: label = {effi_label}, prob = {effi_prob}")
-
-  if key == ord("q"):
-    break
+    if key == ord("q"):
+        break
 
 cap.release()
 cv2.destroyAllWindows()

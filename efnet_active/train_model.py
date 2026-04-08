@@ -40,8 +40,6 @@ def choose_device():
   return device
 
 def build_model(model, device = torch.device("cpu"), model_path = Path('./tmp/model.pth')):
-  weights = torchvision.models.EfficientNet_B0_Weights.IMAGENET1K_V1
-  model = torchvision.models.efficientnet_b0(weights)
   for param in model.features:
       param.requires_grad = False
 
