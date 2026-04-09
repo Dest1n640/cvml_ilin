@@ -3,6 +3,8 @@ from sklearn.metrics import confusion_matrix
 from train_model import choose_device, val_loader, val_ds
 from pathlib import Path
 import torchvision
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def model_load(model, path_weight, device = torch.device("cpu")):
   num_feature = model.classifier[1].in_features
@@ -31,6 +33,19 @@ def build_confusion_matrix(model, dataset, device=torch.device("cpu")):
   print(cm)
   return cm
 
+def save_cm_image(cm, class_names, model_name):
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=class_names, 
+                yticklabels=class_names)
+    
+    plt.title(f'Confusion Matrix - {model_name}')
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    
+    plt.savefig(f'./tmp/cm_{model_name}.png')
+    plt.close()
+
 if __name__ == "__main__":
   EffNet0_weight = Path("./tmp/EffNet0.pth")
   EffNet1_weight = Path("./tmp/EffNet1.pth")
@@ -46,10 +61,13 @@ if __name__ == "__main__":
   EffNet1 = model_load(EffNet1_model, EffNet1_weight, device)
   EffNet2 = model_load(EffNet2_model, EffNet2_weight, device)
 
+  class_names = val_ds.classes
+
   models = [(EffNet0, "B0"), (EffNet1, "B1"), (EffNet2, "B2")]
 
   for m, name in models:
     print(f"\nModel {name}:")
     cm = build_confusion_matrix(m, val_loader, device)
     print("-" * 50)
+    save_cm_image(cm, class_names, name)
   print(val_ds.class_to_idx)
