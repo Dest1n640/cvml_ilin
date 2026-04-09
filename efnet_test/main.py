@@ -46,8 +46,10 @@ if __name__ == "__main__":
   EffNet1 = model_load(EffNet1_model, EffNet1_weight, device)
   EffNet2 = model_load(EffNet2_model, EffNet2_weight, device)
 
-  cm0 = build_confusion_matrix(EffNet0, val_loader, device)
-  print("-" * 50)
-  cm1 = build_confusion_matrix(EffNet1, val_loader, device)
-  print("-" * 50)
-  cm2 = build_confusion_matrix(EffNet2, val_loader, device)
+  models = [(EffNet0, "B0"), (EffNet1, "B1"), (EffNet2, "B2")]
+
+  for m, name in models:
+    print(f"\nModel {name}:")
+    cm = build_confusion_matrix(m, val_loader, device)
+    print("-" * 50)
+  print(val_ds.class_to_idx)
