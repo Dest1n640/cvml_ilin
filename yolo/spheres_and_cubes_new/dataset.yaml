@@ -1,0 +1,8 @@
+names:
+  0: cube
+  1: neither
+  2: sphere
+nc: 3
+path: /Users/dest1n/Studies/AI_and_CV/Homework/yolo/spheres_and_cubes_new
+train: /Users/dest1n/Studies/AI_and_CV/Homework/yolo/spheres_and_cubes_new/images/train
+val: /Users/dest1n/Studies/AI_and_CV/Homework/yolo/spheres_and_cubes_new/images/val
