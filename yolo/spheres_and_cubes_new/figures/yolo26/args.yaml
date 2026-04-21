@@ -13,7 +13,7 @@ cache: false
 device: mps
 workers: 4
 project: /Users/dest1n/Studies/AI_and_CV/Homework/yolo/spheres_and_cubes_new/figures
-name: yolo26
+name: yolo262
 exist_ok: false
 pretrained: true
 optimizer: AdamW
@@ -107,4 +107,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: botsort.yaml
-save_dir: /Users/dest1n/Studies/AI_and_CV/Homework/yolo/spheres_and_cubes_new/figures/yolo26
+save_dir: /Users/dest1n/Studies/AI_and_CV/Homework/yolo/spheres_and_cubes_new/figures/yolo262
