@@ -61,8 +61,9 @@ def detect_push_up(annotated, keypoints, counter, stage_up, angle_history):
       stage_up = True
       counter += 1
 
+  status = "UP" if stage_up else "DOWN"
   cv2.putText(annotated,
-              f"Push ups: {counter}, stage_up: {stage_up}",
+              f"Push ups: {counter} | {status}",
               (10, 30),
               cv2.FONT_HERSHEY_SIMPLEX,
               1.5,
@@ -79,6 +80,7 @@ ps = None
 counter = 0
 stage_up = True
 empty_start_time = None
+prev_counter = 0
 angle_history = deque(maxlen=5)
 
 while camera.isOpened():
@@ -92,12 +94,13 @@ while camera.isOpened():
   results = model(frame, verbose=False)
   # print(f"FPS {1 / (time.perf_counter() - t):.1f})")
 
+  prev_counter = counter
   counter, empty_start_time = is_person_detected(results, counter, empty_start_time)
 
   result = results[0]
   if len(result) > 0 and result.keypoints is not None and len(result.keypoints.xy) > 0:
       keypoints = result.keypoints.data[0].tolist()
-      
+
       annotator = Annotator(frame)
       annotator.kpts(result.keypoints.data[0], result.orig_shape, 5, True)
       annotated = annotator.result()
@@ -114,10 +117,12 @@ while camera.isOpened():
                   (0, 255, 0),
                   3)
       cv2.imshow("POSE", frame)
+  if counter > prev_counter:
+      if ps is None:
+          ps = playsound("./music.mp3", block=False)
+      else:
+          if not ps.is_alive():
+            ps = None
 
-  # if detect_push_up(annotated, keypoints[0], counter):
-  #   if ps is None:
-  #     ps = playsound("./goblinsapperpissed4.mp3", block=False)
-  #   else:
-  #     if not ps.is_alive():
-  #       ps = None
+camera.release()
+cv2.destroyAllWindows()
